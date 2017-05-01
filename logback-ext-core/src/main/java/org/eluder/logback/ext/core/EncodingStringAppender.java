@@ -35,6 +35,7 @@ import ch.qos.logback.core.spi.DeferredProcessingAware;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -48,6 +49,7 @@ public abstract class EncodingStringAppender<E extends DeferredProcessingAware, 
     private boolean binary = false;
     private Encoder<E> encoder;
     private PayloadConverter<P> converter;
+    private OutputStream stream;
 
     public final void setCharset(Charset charset) {
         if (encoder instanceof LayoutWrappingEncoder) {
@@ -173,7 +175,7 @@ public abstract class EncodingStringAppender<E extends DeferredProcessingAware, 
 
     protected void doEncode(E event) {
         try {
-            encoder.doEncode(event);
+            stream.write(encoder.encode(event));
         } catch (IOException ex) {
             this.started = false;
             addError(format("Failed to encode logging event for appender '%s'", getName()), ex);
@@ -181,17 +183,22 @@ public abstract class EncodingStringAppender<E extends DeferredProcessingAware, 
     }
 
     protected void encoderInit(ByteArrayOutputStream stream) {
-        try {
-            encoder.init(stream);
-        } catch (IOException ex) {
-            this.started = false;
-            addError(format("Failed to initialize encoder for appender '%s'", getName()), ex);
+        if (this.stream == null) {
+            this.stream = stream;
+        } else {
+            try {
+                this.stream.close();
+                this.stream = stream;
+            } catch (IOException ex) {
+                this.started = false;
+                addError(format("Failed to initialize encoder for appender '%s'", getName()), ex);
+            }
         }
     }
 
     protected void encoderClose() {
         try {
-            encoder.close();
+            stream.close();
         } catch (Exception ex) {
             this.started = false;
             addError(format("Failed to close encoder for appender '%s'", getName()), ex);

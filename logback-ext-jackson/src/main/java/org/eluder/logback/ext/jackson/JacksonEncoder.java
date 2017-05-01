@@ -36,6 +36,7 @@ import org.eluder.logback.ext.core.CharacterEncoder;
 import org.eluder.logback.ext.core.FieldNames;
 import org.slf4j.Marker;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
@@ -55,7 +56,10 @@ public class JacksonEncoder extends ContextAwareBase implements CharacterEncoder
     private boolean newline;
     
     private boolean started;
-    private JsonWriter writer;
+    private JsonWriter osWriter;
+    
+    private ByteArrayOutputStream baos;
+    private JsonWriter baosWriter;
 
     @Override
     public final void setCharset(Charset charset) {
@@ -114,21 +118,39 @@ public class JacksonEncoder extends ContextAwareBase implements CharacterEncoder
         throwableProxyConverter.stop();
     }
 
-    @Override
     public void close() throws IOException {
-        if (writer != null) {
-            writer.close();
-            writer = null;
+        try {
+            if (osWriter != null) {
+                osWriter.close();
+                osWriter = null;
+            }
+        } finally {
+            if (baosWriter != null) {
+                baosWriter.close();
+                baosWriter = null;
+            }
         }
     }
     
-    @Override
     public void init(OutputStream os) throws IOException {
-        writer = new JsonWriter(os, charset, getMapper());
+        try {
+            if (osWriter != null) {
+                osWriter.close();
+                osWriter = null;
+            }
+        } finally {
+            if (baosWriter != null) {
+                baosWriter.close();
+                baosWriter = null;
+            }
+        }
+
+        osWriter = new JsonWriter(os, charset, getMapper());
+        baos = new ByteArrayOutputStream();
+        baosWriter = new JsonWriter(baos, charset, getMapper());
     }
 
-    @Override
-    public void doEncode(ILoggingEvent event) throws IOException {
+    private void write(ILoggingEvent event, JsonWriter writer) throws IOException {
         JsonWriter.ObjectWriter<JsonWriter> ow = writer.writeObject();
         writeTimeStamp(ow, event);
         writeLogger(ow, event);
@@ -142,6 +164,21 @@ public class JacksonEncoder extends ContextAwareBase implements CharacterEncoder
             w.newline();
         }
         w.flush();
+    }
+    
+    public void doEncode(ILoggingEvent event) throws IOException {
+        write(event, osWriter);
+    }
+    
+    @Override
+    public byte[] encode(ILoggingEvent event) {
+        try {
+            baos.reset();
+            write(event, baosWriter);
+            return baos.toByteArray();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     protected ObjectMapper getMapper() {
@@ -218,5 +255,14 @@ public class JacksonEncoder extends ContextAwareBase implements CharacterEncoder
     private boolean isActive(String name) {
         return !FieldNames.IGNORE_NAME.equals(name);
     }
-    
+
+    @Override
+    public byte[] headerBytes() {
+        return null;
+    }
+
+    @Override
+    public byte[] footerBytes() {
+        return null;
+    }
 }

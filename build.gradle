@@ -5,7 +5,7 @@ plugins {
 
 
 ext {
-    logbackVersion = '1.1.7'
+    logbackVersion = '1.2.1'
     awsVersion = '1.11.35'
     guavaVersion = '19.0'
     jacksonVersion = '2.7.6'
